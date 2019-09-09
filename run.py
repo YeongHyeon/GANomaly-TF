@@ -22,7 +22,7 @@ def main():
     saver = tf.compat.v1.train.Saver()
 
     tfp.training(sess=sess, neuralnet=neuralnet, saver=saver, dataset=dataset, epochs=FLAGS.epoch, batch_size=FLAGS.batch, normalize=True)
-    tfp.test(sess=sess, neuralnet=neuralnet, saver=saver, dataset=dataset, batch_size=FLAGS.batch)
+    # tfp.test(sess=sess, neuralnet=neuralnet, saver=saver, dataset=dataset, batch_size=FLAGS.batch)
 
 if __name__ == '__main__':
 
@@ -30,7 +30,7 @@ if __name__ == '__main__':
     parser.add_argument('--datnorm', type=bool, default=True, help='Data normalization')
     parser.add_argument('--z_dim', type=int, default=2, help='Dimension of latent vector')
     parser.add_argument('--lr', type=int, default=1e-4, help='Learning rate for training')
-    parser.add_argument('--epoch', type=int, default=100, help='Training epoch')
+    parser.add_argument('--epoch', type=int, default=1000, help='Training epoch')
     parser.add_argument('--batch', type=int, default=128, help='Mini batch size')
 
     FLAGS, unparsed = parser.parse_known_args()
