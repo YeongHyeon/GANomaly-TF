@@ -11,7 +11,6 @@ class CVAE(object):
         self.leaning_rate = leaning_rate
 
         self.x = tf.compat.v1.placeholder(tf.float32, [None, self.height, self.width, self.channel])
-        self.z = tf.compat.v1.placeholder(tf.float32, [None, self.z_dim])
         self.batch_size = tf.placeholder(tf.int32, shape=[])
 
         self.weights, self.biasis = [], []
@@ -20,7 +19,7 @@ class CVAE(object):
         self.features_r, self.features_f = [], []
 
         self.z_code, self.x_hat, self.z_code_hat, self.dis_x, self.dis_x_hat, self.features_r, self.features_f =\
-            self.build_model(input=self.x, random_z=self.z, ksize=self.k_size)
+            self.build_model(input=self.x, ksize=self.k_size)
 
         # Loss 1: Encoding loss (L2 distance)
         self.loss_enc = tf.compat.v1.reduce_sum(tf.square(self.z_code - self.z_code_hat), axis=(1))
@@ -38,7 +37,6 @@ class CVAE(object):
                 self.loss_adv += tf.compat.v1.reduce_sum(tf.square(self.features_r[fidx] - self.features_f[fidx]), axis=(1))
             else:
                 self.loss_adv += tf.compat.v1.reduce_sum(tf.square(self.features_r[fidx] - self.features_f[fidx]))
-        self.loss_bce = -tf.compat.v1.reduce_sum(self.dis_x * tf.math.log(self.dis_x_hat + 1e-12) + (1 - self.dis_x) * tf.math.log(1 - self.dis_x_hat + 1e-12), axis=(1))
 
         self.mean_loss_enc = tf.compat.v1.reduce_mean(self.loss_enc)
         self.mean_loss_con = tf.compat.v1.reduce_mean(self.loss_con)
@@ -56,7 +54,7 @@ class CVAE(object):
         tf.compat.v1.summary.scalar('loss_tot', self.loss)
         self.summaries = tf.compat.v1.summary.merge_all()
 
-    def build_model(self, input, random_z, ksize=3):
+    def build_model(self, input, ksize=3):
 
         with tf.name_scope('generator') as scope_gen:
             z_code = self.encoder(input=input, ksize=ksize)

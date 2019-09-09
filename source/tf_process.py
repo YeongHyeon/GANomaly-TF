@@ -127,18 +127,19 @@ def test(sess, saver, neuralnet, dataset, batch_size):
     loss_list = []
     while(True):
         x_te, y_te, terminator = dataset.next_test(1) # y_te does not used in this prj.
-        restore_loss = sess.run(neuralnet.mean_restore, \
+
+        x_restore, score_anomaly = sess.run([neuralnet.x_hat, neuralnet.loss_enc], \
             feed_dict={neuralnet.x:x_te, neuralnet.batch_size:x_te.shape[0]})
         if(y_te[0] == 1):
-            loss_list.append(restore_loss)
+            loss_list.append(score_anomaly[0])
 
         if(terminator): break
 
     loss_list = np.asarray(loss_list)
     loss_avg, loss_std = np.average(loss_list), np.std(loss_list)
     outbound = loss_avg + (loss_std * 3)
-    print("Loss  avg: %.3f, std: %.3f" %(loss_avg, loss_std))
-    print("Outlier boundary: %.3f" %(outbound))
+    print("Loss  avg: %.5f, std: %.5f" %(loss_avg, loss_std))
+    print("Outlier boundary: %.5f" %(outbound))
 
     fcsv = open("test-summary.csv", "w")
     fcsv.write("class, loss, outlier\n")
@@ -148,30 +149,23 @@ def test(sess, saver, neuralnet, dataset, batch_size):
     while(True):
         x_te, y_te, terminator = dataset.next_test(1) # y_te does not used in this prj.
 
-        x_restore, z_enc, restore_loss = sess.run([neuralnet.x_hat, neuralnet.z_enc, neuralnet.mean_restore], \
+        x_restore, score_anomaly = sess.run([neuralnet.x_hat, neuralnet.loss_enc], \
             feed_dict={neuralnet.x:x_te, neuralnet.batch_size:x_te.shape[0]})
 
-        loss4box[y_te[0]].append(restore_loss)
+        loss4box[y_te[0]].append(score_anomaly)
 
-        if(z_enc_tot is None):
-            z_enc_tot = z_enc
-            y_te_tot = y_te
-        else:
-            z_enc_tot = np.append(z_enc_tot, z_enc, axis=0)
-            y_te_tot = np.append(y_te_tot, y_te, axis=0)
+        outcheck = score_anomaly > outbound
+        fcsv.write("%d, %.5f, %r\n" %(y_te, score_anomaly, outcheck))
 
-        outcheck = restore_loss > outbound
-        fcsv.write("%d, %.3f, %r\n" %(y_te, restore_loss, outcheck))
-
-        [h, w, c] = x_te[0].shape
+        [h, w, c] = x_restore[0].shape
         canvas = np.ones((h, w*3, c), np.float32)
         canvas[:, :w, :] = x_te[0]
         canvas[:, w:w*2, :] = x_restore[0]
         canvas[:, w*2:, :] = (x_te[0]-x_restore[0])**2
         if(outcheck):
-            plt.imsave(os.path.join("test", "outbound", "%08d-%08d.png" %(testnum, int(restore_loss))), gray2rgb(gray=canvas))
+            plt.imsave(os.path.join("test", "outbound", "%08d-%08d.png" %(testnum, int(score_anomaly))), gray2rgb(gray=canvas))
         else:
-            plt.imsave(os.path.join("test", "inbound", "%08d-%08d.png" %(testnum, int(restore_loss))), gray2rgb(gray=canvas))
+            plt.imsave(os.path.join("test", "inbound", "%08d-%08d.png" %(testnum, int(score_anomaly))), gray2rgb(gray=canvas))
 
         testnum += 1
 
