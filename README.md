@@ -5,10 +5,15 @@ Implementation of GANomaly with MNIST dataset [<a href="https://github.com/Yeong
 
 
 ## Results
-<!-- <div align="center">
-  <img src="./figures/111.png" width="800">  
-  <p>111.</p>
-</div> -->
+<div align="center">
+  <img src="./figures/restoring.png" width="800">  
+  <p>Restoration result by GANomaly.</p>
+</div>
+
+<div align="center">
+  <img src="./figures/test-box.png" width="600">
+  <p>Box plot with encoding loss of test procedure.</p>
+</div>
 
 ## Environment
 * Python 3.7.4  
