@@ -11,10 +11,6 @@ def make_dir(path):
     try: os.mkdir(path)
     except: pass
 
-def gaussian_sample(batch_size, z_dim, mean=0, sigma=1):
-
-    return np.random.normal(loc=mean, scale=sigma, size=(batch_size, z_dim)).astype(np.float32)
-
 def gray2rgb(gray):
 
     rgb = np.ones((gray.shape[0], gray.shape[1], 3)).astype(np.float32)
@@ -54,25 +50,6 @@ def save_img(contents, names=["", "", ""], savename=""):
     plt.savefig(savename)
     plt.close()
 
-def discrete_cmap(N, base_cmap=None):
-
-    base = plt.cm.get_cmap(base_cmap)
-    color_list = base(np.linspace(0, 1, N))
-    cmap_name = base.name + str(N)
-
-    return base.from_list(cmap_name, color_list, N)
-
-def latent_plot(latent, y, n, savename=""):
-
-    plt.figure(figsize=(6, 5))
-    plt.scatter(latent[:, 0], latent[:, 1], c=y, \
-        marker='o', edgecolor='none', cmap=discrete_cmap(n, 'jet'))
-    plt.colorbar(ticks=range(n))
-    plt.grid()
-    plt.tight_layout()
-    plt.savefig(savename)
-    plt.close()
-
 def boxplot(contents, savename=""):
 
     data, label = [], []
@@ -96,7 +73,7 @@ def training(sess, saver, neuralnet, dataset, epochs, batch_size, normalize=True
     summary_writer = tf.compat.v1.summary.FileWriter(PACK_PATH+'/Checkpoint', sess.graph)
 
     make_dir(path="results")
-    result_list = ["tr_latent", "tr_resotring", "tr_latent_walk"]
+    result_list = ["tr_resotring"]
     for result_name in result_list: make_dir(path=os.path.join("results", result_name))
 
     start_time = time.time()
@@ -110,27 +87,12 @@ def training(sess, saver, neuralnet, dataset, epochs, batch_size, normalize=True
     for epoch in range(epochs):
 
         x_tr, y_tr, _ = dataset.next_train(batch_size=test_size, fix=True) # Initial batch
-        x_restore, z_enc = sess.run([neuralnet.x_hat, neuralnet.z_enc], \
+        x_restore = sess.run(neuralnet.x_hat, \
             feed_dict={neuralnet.x:x_tr, neuralnet.batch_size:x_tr.shape[0]})
-        if(neuralnet.z_dim == 2):
-            latent_plot(latent=z_enc, y=y_tr, n=dataset.num_class, \
-                savename=os.path.join("results", "tr_latent", "%08d.png" %(epoch)))
+
         save_img(contents=[x_tr, x_restore, (x_tr-x_restore)**2], \
             names=["Input\n(x)", "Restoration\n(x to x-hat)", "Difference"], \
             savename=os.path.join("results", "tr_resotring", "%08d.png" %(epoch)))
-
-        if(neuralnet.z_dim == 2):
-            x_values = np.linspace(-3, 3, test_sq)
-            y_values = np.linspace(-3, 3, test_sq)
-            z_latents = None
-            for y_loc, y_val in enumerate(y_values):
-                for x_loc, x_val in enumerate(x_values):
-                    z_latent = np.reshape(np.array([y_val, x_val]), (1, neuralnet.z_dim))
-                    if(z_latents is None): z_latents = z_latent
-                    else: z_latents = np.append(z_latents, z_latent, axis=0)
-            x_samples = sess.run(neuralnet.x_sample, \
-                feed_dict={neuralnet.z:z_latents, neuralnet.batch_size:z_latents.shape[0]})
-            plt.imsave(os.path.join("results", "tr_latent_walk", "%08d.png" %(epoch)), dat2canvas(data=x_samples))
 
         while(True):
             x_tr, y_tr, terminator = dataset.next_train(batch_size) # y_tr does not used in this prj.
@@ -138,15 +100,15 @@ def training(sess, saver, neuralnet, dataset, epochs, batch_size, normalize=True
             _, summaries = sess.run([neuralnet.optimizer, neuralnet.summaries], \
                 feed_dict={neuralnet.x:x_tr, neuralnet.batch_size:x_tr.shape[0]}, \
                 options=run_options, run_metadata=run_metadata)
-            restore_loss, kld, loss = sess.run([neuralnet.mean_restore, neuralnet.mean_kld, neuralnet.loss], \
+            loss_enc, loss_con, loss_adv, loss_tot = sess.run([neuralnet.mean_loss_enc, neuralnet.mean_loss_con, neuralnet.mean_loss_adv, neuralnet.loss], \
                 feed_dict={neuralnet.x:x_tr, neuralnet.batch_size:x_tr.shape[0]})
             summary_writer.add_summary(summaries, iteration)
 
             iteration += 1
             if(terminator): break
 
-        print("Epoch [%d / %d] (%d iteration)  Restore:%.3f, KLD:%.3f, Total:%.3f" \
-            %(epoch, epochs, iteration, restore_loss, kld, loss))
+        print("Epoch [%d / %d] (%d iteration) Loss  Enc:%.3f, Con:%.3f, Adv:%.3f, Tot:%.3f" \
+            %(epoch, epochs, iteration, loss_enc, loss_con, loss_adv, loss_tot))
         saver.save(sess, PACK_PATH+"/Checkpoint/model_checker")
         summary_writer.add_run_metadata(run_metadata, 'epoch-%d' % epoch)
 
@@ -216,7 +178,3 @@ def test(sess, saver, neuralnet, dataset, batch_size):
         if(terminator): break
 
     boxplot(contents=loss4box, savename="test-box.png")
-
-    if(neuralnet.z_dim == 2):
-        latent_plot(latent=z_enc_tot, y=y_te_tot, n=dataset.num_class, \
-            savename=os.path.join("test-latent.png"))

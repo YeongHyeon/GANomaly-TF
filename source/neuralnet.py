@@ -17,121 +17,150 @@ class CVAE(object):
         self.w_names, self.b_names = [], []
         self.fc_shapes, self.conv_shapes = [], []
 
-        self.z_enc, self.z_mu, self.z_sigma, self.x_hat, self.x_sample = \
+        self.z_code, self.x_hat, self.z_code_hat, self.dis_x, self.dis_x_hat =\
             self.build_model(input=self.x, random_z=self.z, ksize=self.k_size)
 
-        self.restore_error = -tf.reduce_sum(self.x * tf.math.log(self.x_hat + 1e-12) + (1 - self.x) * tf.math.log(1 - self.x_hat + 1e-12), axis=(1, 2, 3))
-        self.kl_divergence = 0.5 * tf.reduce_sum(tf.square(self.z_mu) + tf.square(self.z_sigma) - tf.math.log(tf.square(self.z_sigma) + 1e-12) - 1, axis=(1))
+        # Loss 1: Encoding loss (L2 distance)
+        self.loss_enc = tf.reduce_sum(tf.square(self.z_code - self.z_code_hat), axis=(1))
+        # Loss 2: Restoration loss (L1 distance)
+        self.loss_con = tf.reduce_sum(tf.abs(self.x - self.x_hat), axis=(1, 2, 3))
+        # Loss 3: Adversarial loss (L2 distance)
+        self.loss_adv = tf.reduce_sum(tf.square(self.dis_x - self.dis_x_hat), axis=(1))
 
-        self.mean_restore = tf.reduce_mean(self.restore_error)
-        self.mean_kld = tf.reduce_mean(self.kl_divergence)
-        self.ELBO = tf.reduce_mean(self.restore_error + self.kl_divergence) # Evidence LowerBOund
-        self.loss = self.ELBO
+        self.mean_loss_enc = tf.reduce_mean(self.loss_enc)
+        self.mean_loss_con = tf.reduce_mean(self.loss_con)
+        self.mean_loss_adv = tf.reduce_mean(self.loss_adv)
+
+        self.loss = tf.reduce_mean(self.loss_enc + self.loss_con + self.loss_adv)
 
         #default: beta1=0.9, beta2=0.999
         self.optimizer = tf.compat.v1.train.AdamOptimizer( \
             self.leaning_rate, beta1=0.9, beta2=0.999).minimize(self.loss)
 
-        tf.compat.v1.summary.scalar('restore_error', self.mean_restore)
-        tf.compat.v1.summary.scalar('kl_divergence', self.mean_kld)
-        tf.compat.v1.summary.scalar('total loss', self.loss)
+        tf.compat.v1.summary.scalar('loss_enc', self.mean_loss_enc)
+        tf.compat.v1.summary.scalar('loss_con', self.mean_loss_con)
+        tf.compat.v1.summary.scalar('loss_adv', self.mean_loss_adv)
+        tf.compat.v1.summary.scalar('loss_tot', self.loss)
         self.summaries = tf.compat.v1.summary.merge_all()
 
     def build_model(self, input, random_z, ksize=3):
 
-        with tf.name_scope('encoder') as scope_enc:
-            z_enc, z_mu, z_sigma = self.encoder(input=input, ksize=ksize)
+        with tf.name_scope('generator') as scope_gen:
+            z_code = self.encoder(input=input, ksize=ksize)
+            x_hat = self.decoder(input=z_code, ksize=ksize)
+            z_code_hat = self.encoder(input=x_hat, ksize=ksize)
 
-        with tf.name_scope('decoder') as scope_enc:
-            x_hat = self.decoder(input=z_enc, ksize=ksize)
-            x_sample = self.decoder(input=random_z, ksize=ksize)
+        with tf.name_scope('discriminator') as scope_dis:
+            dis_x = self.discriminator(input=input, ksize=ksize)
+            dis_x_hat = self.discriminator(input=x_hat, ksize=ksize)
 
-        return z_enc, z_mu, z_sigma, x_hat, x_sample
+        return z_code, x_hat, z_code_hat, dis_x, dis_x_hat
 
     def encoder(self, input, ksize=3):
 
         print("Encode-1")
         conv1_1 = self.conv2d(input=input, stride=1, padding='SAME', \
-            filter_size=[ksize, ksize, 1, 16], activation="elu", name="conv1_1")
+            filter_size=[ksize, ksize, 1, 16], activation="elu", name="enconv1_1")
         conv1_2 = self.conv2d(input=conv1_1, stride=1, padding='SAME', \
-            filter_size=[ksize, ksize, 16, 16], activation="elu", name="conv1_2")
+            filter_size=[ksize, ksize, 16, 16], activation="elu", name="enconv1_2")
         maxp1 = self.maxpool(input=conv1_2, ksize=2, strides=2, padding='SAME', name="max_pool1")
         self.conv_shapes.append(conv1_2.shape)
 
         print("Encode-2")
         conv2_1 = self.conv2d(input=maxp1, stride=1, padding='SAME', \
-            filter_size=[ksize, ksize, 16, 32], activation="elu", name="conv2_1")
+            filter_size=[ksize, ksize, 16, 32], activation="elu", name="enconv2_1")
         conv2_2 = self.conv2d(input=conv2_1, stride=1, padding='SAME', \
-            filter_size=[ksize, ksize, 32, 32], activation="elu", name="conv2_2")
+            filter_size=[ksize, ksize, 32, 32], activation="elu", name="enconv2_2")
         maxp2 = self.maxpool(input=conv2_2, ksize=2, strides=2, padding='SAME', name="max_pool2")
         self.conv_shapes.append(conv2_2.shape)
 
         print("Encode-3")
         conv3_1 = self.conv2d(input=maxp2, stride=1, padding='SAME', \
-            filter_size=[ksize, ksize, 32, 64], activation="elu", name="conv3_1")
+            filter_size=[ksize, ksize, 32, 64], activation="elu", name="enconv3_1")
         conv3_2 = self.conv2d(input=conv3_1, stride=1, padding='SAME', \
-            filter_size=[ksize, ksize, 64, 64], activation="elu", name="conv3_2")
+            filter_size=[ksize, ksize, 64, 64], activation="elu", name="enconv3_2")
         self.conv_shapes.append(conv3_2.shape)
 
         print("Dense (Fully-Connected)")
         self.fc_shapes.append(conv3_2.shape)
         [n, h, w, c] = self.fc_shapes[0]
-        fulcon_in = tf.compat.v1.reshape(conv3_2, shape=[self.batch_size, h*w*c], name="fulcon_in")
+        fulcon_in = tf.compat.v1.reshape(conv3_2, shape=[self.batch_size, h*w*c], name="enfulcon_in")
         fulcon1 = self.fully_connected(input=fulcon_in, num_inputs=int(h*w*c), \
-            num_outputs=512, activation="elu", name="fullcon1")
+            num_outputs=512, activation="elu", name="enfullcon1")
 
-        z_params = self.fully_connected(input=fulcon1, num_inputs=int(fulcon1.shape[1]), \
-            num_outputs=self.z_dim*2, activation="None", name="z_sigma")
-        z_mu = z_params[:, :self.z_dim]
-        z_sigma = z_params[:, self.z_dim:]
+        z_code = self.fully_connected(input=fulcon1, num_inputs=int(fulcon1.shape[1]), \
+            num_outputs=self.z_dim, activation="None", name="encode")
 
-        z = self.sample_z(mu=z_mu, sigma=z_sigma) # reparameterization trick
-
-        return z, z_mu, z_sigma
+        return z_code
 
     def decoder(self, input, ksize=3):
 
         print("Decode-Dense")
         [n, h, w, c] = self.fc_shapes[0]
         fulcon2 = self.fully_connected(input=input, num_inputs=int(self.z_dim), \
-            num_outputs=512, activation="elu", name="fullcon2")
+            num_outputs=512, activation="elu", name="defullcon2")
         fulcon3 = self.fully_connected(input=fulcon2, num_inputs=int(fulcon2.shape[1]), \
-            num_outputs=int(h*w*c), activation="elu", name="fullcon3")
-        fulcon_out = tf.compat.v1.reshape(fulcon3, shape=[self.batch_size, h, w, c], name="fulcon_out")
+            num_outputs=int(h*w*c), activation="elu", name="defullcon3")
+        fulcon_out = tf.compat.v1.reshape(fulcon3, shape=[self.batch_size, h, w, c], name="defulcon_out")
 
         print("Decode-1")
         convt1_1 = self.conv2d(input=fulcon_out, stride=1, padding='SAME', \
-            filter_size=[ksize, ksize, 64, 64], activation="elu", name="convt1_1")
+            filter_size=[ksize, ksize, 64, 64], activation="elu", name="deconv1_1")
         convt1_2 = self.conv2d(input=convt1_1, stride=1, padding='SAME', \
-            filter_size=[ksize, ksize, 64, 64], activation="elu", name="convt1_2")
+            filter_size=[ksize, ksize, 64, 64], activation="elu", name="deconv1_2")
 
         print("Decode-2")
         [n, h, w, c] = self.conv_shapes[-2]
         convt2_1 = self.conv2d_transpose(input=convt1_2, stride=2, padding='SAME', \
             output_shape=[self.batch_size, h, w, c], filter_size=[ksize, ksize, 32, 64], \
-            dilations=[1, 1, 1, 1], activation="elu", name="convt2_1")
+            dilations=[1, 1, 1, 1], activation="elu", name="deconv2_1")
         convt2_2 = self.conv2d(input=convt2_1, stride=1, padding='SAME', \
-            filter_size=[ksize, ksize, 32, 32], activation="elu", name="convt2_2")
+            filter_size=[ksize, ksize, 32, 32], activation="elu", name="deconv2_2")
 
         print("Decode-3")
         [n, h, w, c] = self.conv_shapes[-3]
         convt3_1 = self.conv2d_transpose(input=convt2_2, stride=2, padding='SAME', \
             output_shape=[self.batch_size, h, w, c], filter_size=[ksize, ksize, 16, 32], \
-            dilations=[1, 1, 1, 1], activation="elu", name="convt3_1")
+            dilations=[1, 1, 1, 1], activation="elu", name="deconv3_1")
         convt3_2 = self.conv2d(input=convt3_1, stride=1, padding='SAME', \
-            filter_size=[ksize, ksize, 16, 16], activation="elu", name="convt3_2")
+            filter_size=[ksize, ksize, 16, 16], activation="elu", name="deconv3_2")
         convt3_3 = self.conv2d(input=convt3_2, stride=1, padding='SAME', \
-            filter_size=[ksize, ksize, 16, 1], activation="sigmoid", name="convt3_3")
+            filter_size=[ksize, ksize, 16, 1], activation="sigmoid", name="deconv3_3")
 
         return convt3_3
 
-    def sample_z(self, mu, sigma):
+    def discriminator(self, input, ksize=3):
 
-        # default of tf.random.normal: mean=0.0, stddev=1.0
-        epsilon = tf.random.normal(tf.shape(mu), dtype=tf.float32)
-        sample = mu + (sigma * epsilon)
+        print("Discriminate-1")
+        conv1_1 = self.conv2d(input=input, stride=1, padding='SAME', \
+            filter_size=[ksize, ksize, 1, 16], activation="elu", name="disconv1_1")
+        conv1_2 = self.conv2d(input=conv1_1, stride=1, padding='SAME', \
+            filter_size=[ksize, ksize, 16, 16], activation="elu", name="disconv1_2")
+        maxp1 = self.maxpool(input=conv1_2, ksize=2, strides=2, padding='SAME', name="max_pool1")
 
-        return sample
+        print("Discriminate-2")
+        conv2_1 = self.conv2d(input=maxp1, stride=1, padding='SAME', \
+            filter_size=[ksize, ksize, 16, 32], activation="elu", name="disconv2_1")
+        conv2_2 = self.conv2d(input=conv2_1, stride=1, padding='SAME', \
+            filter_size=[ksize, ksize, 32, 32], activation="elu", name="disconv2_2")
+        maxp2 = self.maxpool(input=conv2_2, ksize=2, strides=2, padding='SAME', name="max_pool2")
+
+        print("Discriminate-3")
+        conv3_1 = self.conv2d(input=maxp2, stride=1, padding='SAME', \
+            filter_size=[ksize, ksize, 32, 64], activation="elu", name="disconv3_1")
+        conv3_2 = self.conv2d(input=conv3_1, stride=1, padding='SAME', \
+            filter_size=[ksize, ksize, 64, 64], activation="elu", name="disconv3_2")
+
+        print("Dense (Fully-Connected)")
+        [n, h, w, c] = conv3_2.shape
+        fulcon_in = tf.compat.v1.reshape(conv3_2, shape=[self.batch_size, h*w*c], name="disfulcon_in")
+        fulcon1 = self.fully_connected(input=fulcon_in, num_inputs=int(h*w*c), \
+            num_outputs=512, activation="elu", name="disfullcon1")
+
+        disc_score = self.fully_connected(input=fulcon1, num_inputs=int(fulcon1.shape[1]), \
+            num_outputs=1, activation="None", name="disc_sco")
+
+        return disc_score
 
     def initializer(self):
         return tf.compat.v1.initializers.variance_scaling(distribution="untruncated_normal", dtype=tf.dtypes.float32)
