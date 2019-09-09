@@ -73,25 +73,25 @@ class CVAE(object):
 
         print("Encode-1")
         conv1_1 = self.conv2d(input=input, stride=1, padding='SAME', \
-            filter_size=[ksize, ksize, 1, 16], activation="elu", name="enconv1_1")
+            filter_size=[ksize, ksize, 1, 16], activation="lrelu", name="enconv1_1")
         conv1_2 = self.conv2d(input=conv1_1, stride=1, padding='SAME', \
-            filter_size=[ksize, ksize, 16, 16], activation="elu", name="enconv1_2")
+            filter_size=[ksize, ksize, 16, 16], activation="lrelu", name="enconv1_2")
         maxp1 = self.maxpool(input=conv1_2, ksize=2, strides=2, padding='SAME', name="max_pool1")
         self.conv_shapes.append(conv1_2.shape)
 
         print("Encode-2")
         conv2_1 = self.conv2d(input=maxp1, stride=1, padding='SAME', \
-            filter_size=[ksize, ksize, 16, 32], activation="elu", name="enconv2_1")
+            filter_size=[ksize, ksize, 16, 32], activation="lrelu", name="enconv2_1")
         conv2_2 = self.conv2d(input=conv2_1, stride=1, padding='SAME', \
-            filter_size=[ksize, ksize, 32, 32], activation="elu", name="enconv2_2")
+            filter_size=[ksize, ksize, 32, 32], activation="lrelu", name="enconv2_2")
         maxp2 = self.maxpool(input=conv2_2, ksize=2, strides=2, padding='SAME', name="max_pool2")
         self.conv_shapes.append(conv2_2.shape)
 
         print("Encode-3")
         conv3_1 = self.conv2d(input=maxp2, stride=1, padding='SAME', \
-            filter_size=[ksize, ksize, 32, 64], activation="elu", name="enconv3_1")
+            filter_size=[ksize, ksize, 32, 64], activation="lrelu", name="enconv3_1")
         conv3_2 = self.conv2d(input=conv3_1, stride=1, padding='SAME', \
-            filter_size=[ksize, ksize, 64, 64], activation="elu", name="enconv3_2")
+            filter_size=[ksize, ksize, 64, 64], activation="lrelu", name="enconv3_2")
         self.conv_shapes.append(conv3_2.shape)
 
         print("Dense (Fully-Connected)")
@@ -99,7 +99,7 @@ class CVAE(object):
         [n, h, w, c] = self.fc_shapes[0]
         fulcon_in = tf.compat.v1.reshape(conv3_2, shape=[self.batch_size, h*w*c], name="enfulcon_in")
         fulcon1 = self.fully_connected(input=fulcon_in, num_inputs=int(h*w*c), \
-            num_outputs=512, activation="elu", name="enfullcon1")
+            num_outputs=512, activation="lrelu", name="enfullcon1")
 
         z_code = self.fully_connected(input=fulcon1, num_inputs=int(fulcon1.shape[1]), \
             num_outputs=self.z_dim, activation="None", name="encode")
@@ -111,34 +111,35 @@ class CVAE(object):
         print("Decode-Dense")
         [n, h, w, c] = self.fc_shapes[0]
         fulcon2 = self.fully_connected(input=input, num_inputs=int(self.z_dim), \
-            num_outputs=512, activation="elu", name="defullcon2")
+            num_outputs=512, activation="lrelu", name="defullcon2")
         fulcon3 = self.fully_connected(input=fulcon2, num_inputs=int(fulcon2.shape[1]), \
-            num_outputs=int(h*w*c), activation="elu", name="defullcon3")
+            num_outputs=int(h*w*c), activation="lrelu", name="defullcon3")
         fulcon_out = tf.compat.v1.reshape(fulcon3, shape=[self.batch_size, h, w, c], name="defulcon_out")
 
         print("Decode-1")
         convt1_1 = self.conv2d(input=fulcon_out, stride=1, padding='SAME', \
-            filter_size=[ksize, ksize, 64, 64], activation="elu", name="deconv1_1")
+            filter_size=[ksize, ksize, 64, 64], activation="lrelu", name="deconv1_1")
         convt1_2 = self.conv2d(input=convt1_1, stride=1, padding='SAME', \
-            filter_size=[ksize, ksize, 64, 64], activation="elu", name="deconv1_2")
+            filter_size=[ksize, ksize, 64, 64], activation="lrelu", name="deconv1_2")
 
         print("Decode-2")
         [n, h, w, c] = self.conv_shapes[-2]
         convt2_1 = self.conv2d_transpose(input=convt1_2, stride=2, padding='SAME', \
             output_shape=[self.batch_size, h, w, c], filter_size=[ksize, ksize, 32, 64], \
-            dilations=[1, 1, 1, 1], activation="elu", name="deconv2_1")
+            dilations=[1, 1, 1, 1], activation="lrelu", name="deconv2_1")
         convt2_2 = self.conv2d(input=convt2_1, stride=1, padding='SAME', \
-            filter_size=[ksize, ksize, 32, 32], activation="elu", name="deconv2_2")
+            filter_size=[ksize, ksize, 32, 32], activation="lrelu", name="deconv2_2")
 
         print("Decode-3")
         [n, h, w, c] = self.conv_shapes[-3]
         convt3_1 = self.conv2d_transpose(input=convt2_2, stride=2, padding='SAME', \
             output_shape=[self.batch_size, h, w, c], filter_size=[ksize, ksize, 16, 32], \
-            dilations=[1, 1, 1, 1], activation="elu", name="deconv3_1")
+            dilations=[1, 1, 1, 1], activation="lrelu", name="deconv3_1")
         convt3_2 = self.conv2d(input=convt3_1, stride=1, padding='SAME', \
-            filter_size=[ksize, ksize, 16, 16], activation="elu", name="deconv3_2")
+            filter_size=[ksize, ksize, 16, 16], activation="lrelu", name="deconv3_2")
         convt3_3 = self.conv2d(input=convt3_2, stride=1, padding='SAME', \
-            filter_size=[ksize, ksize, 16, 1], activation="sigmoid", name="deconv3_3")
+            filter_size=[ksize, ksize, 16, 1], activation="None", name="deconv3_3")
+        convt3_3 = tf.compat.v1.clip_by_value(convt3_3, 1e-12, 1-(1e-12))
 
         return convt3_3
 
@@ -179,7 +180,7 @@ class CVAE(object):
             num_outputs=512, activation="elu", name="disfullcon1")
         featurebank.append(fulcon1)
         disc_score = self.fully_connected(input=fulcon1, num_inputs=int(fulcon1.shape[1]), \
-            num_outputs=1, activation="None", name="disc_sco")
+            num_outputs=1, activation="sigmoid", name="disc_sco")
         featurebank.append(disc_score)
 
         return disc_score, featurebank
