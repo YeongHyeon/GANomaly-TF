@@ -24,4 +24,3 @@ Implementation of GANomaly with MNIST dataset [<a href="https://github.com/Yeong
 
 ## Reference
 [1] S Akcay, et al. (2018). <a href="https://arxiv.org/abs/1805.06725">Ganomaly: Semi-supervised anomaly detection via adversarial training.</a>. arXiv preprint arXiv:1805.06725.
-[2] T Schlegl, et al. (2017). <a href="https://arxiv.org/abs/1703.05921">Unsupervised anomaly detection with generative adversarial networks to guide marker discovery.</a>. arXiv preprint arXiv:1703.05921.
