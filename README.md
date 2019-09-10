@@ -3,6 +3,12 @@ GANomaly
 
 Implementation of GANomaly with MNIST dataset [<a href="https://github.com/YeongHyeon/CVAE-AnomalyDetection">Related repository</a>].
 
+## Architecture
+<div align="center">
+  <img src="./figures/ganomaly.png" width="500">  
+  <p>Simplified GANomaly architecture.</p>
+</div>
+
 ## Problem Definition
 <div align="center">
   <img src="./figures/definition.png" width="600">  
