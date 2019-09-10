@@ -3,6 +3,11 @@ GANomaly
 
 Implementation of GANomaly with MNIST dataset [<a href="https://github.com/YeongHyeon/CVAE-AnomalyDetection">Related repository</a>].
 
+## Problem Definition
+<div align="center">
+  <img src="./figures/definition.png" width="600">  
+  <p>'Class-1' is defined as normal and the others are defined as abnormal.</p>
+</div>
 
 ## Results
 <div align="center">
@@ -11,7 +16,7 @@ Implementation of GANomaly with MNIST dataset [<a href="https://github.com/Yeong
 </div>
 
 <div align="center">
-  <img src="./figures/test-box.png" width="600">
+  <img src="./figures/test-box.png" width="400">
   <p>Box plot with encoding loss of test procedure.</p>
 </div>
 
