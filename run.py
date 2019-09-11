@@ -12,7 +12,7 @@ import source.tf_process as tfp
 def main():
 
     dataset = dman.Dataset(normalize=FLAGS.datnorm)
-    neuralnet = nn.CVAE(height=dataset.height, width=dataset.width, channel=dataset.channel, \
+    neuralnet = nn.GANomaly(height=dataset.height, width=dataset.width, channel=dataset.channel, \
         z_dim=FLAGS.z_dim, leaning_rate=FLAGS.lr)
 
     sess_config = tf.compat.v1.ConfigProto()
@@ -31,7 +31,7 @@ if __name__ == '__main__':
     parser.add_argument('--z_dim', type=int, default=128, help='Dimension of latent vector')
     parser.add_argument('--lr', type=int, default=1e-4, help='Learning rate for training')
     parser.add_argument('--epoch', type=int, default=1000, help='Training epoch')
-    parser.add_argument('--batch', type=int, default=128, help='Mini batch size')
+    parser.add_argument('--batch', type=int, default=32, help='Mini batch size')
 
     FLAGS, unparsed = parser.parse_known_args()
 

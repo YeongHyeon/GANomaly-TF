@@ -1,6 +1,6 @@
 import tensorflow as tf
 
-class CVAE(object):
+class GANomaly(object):
 
     def __init__(self, height, width, channel, z_dim, w_enc=1, w_con=50, w_adv=1, leaning_rate=1e-3):
 
