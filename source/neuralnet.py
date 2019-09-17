@@ -16,9 +16,9 @@ class GANomaly(object):
         self.weights, self.biasis = [], []
         self.w_names, self.b_names = [], []
         self.fc_shapes, self.conv_shapes = [], []
-        self.features_r, self.features_f = [], []
+        self.features_real, self.features_fake = [], []
 
-        self.z_code, self.x_hat, self.z_code_hat, self.dis_x, self.dis_x_hat, self.features_r, self.features_f =\
+        self.z_code, self.x_hat, self.z_code_hat, self.dis_x, self.dis_x_hat, self.features_real, self.features_fake =\
             self.build_model(input=self.x, ksize=self.k_size)
 
         # Loss 1: Encoding loss (L2 distance)
@@ -27,16 +27,16 @@ class GANomaly(object):
         self.loss_con = tf.compat.v1.reduce_sum(tf.abs(self.x - self.x_hat), axis=(1, 2, 3))
         # Loss 3: Adversarial loss (L2 distance)
         self.loss_adv = tf.compat.v1.reduce_sum(tf.square(self.dis_x - self.dis_x_hat), axis=(1))
-        for fidx, _ in enumerate(self.features_r):
-            feat_dim = len(self.features_r[fidx].shape)
+        for fidx, _ in enumerate(self.features_real):
+            feat_dim = len(self.features_real[fidx].shape)
             if(feat_dim == 4):
-                self.loss_adv += tf.compat.v1.reduce_sum(tf.square(self.features_r[fidx] - self.features_f[fidx]), axis=(1, 2, 3))
+                self.loss_adv += tf.compat.v1.reduce_sum(tf.square(self.features_real[fidx] - self.features_fake[fidx]), axis=(1, 2, 3))
             elif(feat_dim == 3):
-                self.loss_adv += tf.compat.v1.reduce_sum(tf.square(self.features_r[fidx] - self.features_f[fidx]), axis=(1, 2))
+                self.loss_adv += tf.compat.v1.reduce_sum(tf.square(self.features_real[fidx] - self.features_fake[fidx]), axis=(1, 2))
             elif(feat_dim == 2):
-                self.loss_adv += tf.compat.v1.reduce_sum(tf.square(self.features_r[fidx] - self.features_f[fidx]), axis=(1))
+                self.loss_adv += tf.compat.v1.reduce_sum(tf.square(self.features_real[fidx] - self.features_fake[fidx]), axis=(1))
             else:
-                self.loss_adv += tf.compat.v1.reduce_sum(tf.square(self.features_r[fidx] - self.features_f[fidx]))
+                self.loss_adv += tf.compat.v1.reduce_sum(tf.square(self.features_real[fidx] - self.features_fake[fidx]))
 
         self.mean_loss_enc = tf.compat.v1.reduce_mean(self.loss_enc)
         self.mean_loss_con = tf.compat.v1.reduce_mean(self.loss_con)
@@ -62,10 +62,10 @@ class GANomaly(object):
             z_code_hat = self.encoder(input=x_hat, ksize=ksize)
 
         with tf.name_scope('discriminator') as scope_dis:
-            dis_x, features_r = self.discriminator(input=input, ksize=ksize)
-            dis_x_hat, features_f = self.discriminator(input=x_hat, ksize=ksize)
+            dis_x, features_real = self.discriminator(input=input, ksize=ksize)
+            dis_x_hat, features_fake = self.discriminator(input=x_hat, ksize=ksize)
 
-        return z_code, x_hat, z_code_hat, dis_x, dis_x_hat, features_r, features_f
+        return z_code, x_hat, z_code_hat, dis_x, dis_x_hat, features_real, features_fake
 
     def encoder(self, input, ksize=3):
 
