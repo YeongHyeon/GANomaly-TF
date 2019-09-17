@@ -9,6 +9,12 @@ Implementation of GANomaly with MNIST dataset [<a href="https://github.com/Yeong
   <p>Simplified GANomaly architecture.</p>
 </div>
 
+## Graph in TensorBoard
+<div align="center">
+  <img src="./figures/graph.png" width="800">  
+  <p>Graph of GANomaly.</p>
+</div>
+
 ## Problem Definition
 <div align="center">
   <img src="./figures/definition.png" width="600">  
