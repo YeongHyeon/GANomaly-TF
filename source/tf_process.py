@@ -59,7 +59,7 @@ def boxplot(contents, savename=""):
 
     plt.clf()
     fig, ax1 = plt.subplots()
-    bp = ax1.boxplot(data, showfliers=True)
+    bp = ax1.boxplot(data, showfliers=True, whis=3)
     ax1.set_xticklabels(label, rotation=45)
 
     plt.tight_layout()
