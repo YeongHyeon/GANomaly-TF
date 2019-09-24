@@ -235,8 +235,6 @@ class GANomaly(object):
     def conv2d(self, input, stride, padding, \
         filter_size=[3, 3, 16, 32], dilations=[1, 1, 1, 1], activation="relu", name=""):
 
-        # strides=[N, H, W, C], [1, stride, stride, 1]
-        # filter_size=[ksize, ksize, num_inputs, num_outputs]
         self.weights, self.w_names, weight = self.variable_maker(var_bank=self.weights, name_bank=self.w_names, \
             shape=filter_size, name='%s_w' %(name))
         self.biasis, self.b_names, bias = self.variable_maker(var_bank=self.biasis, name_bank=self.b_names, \
@@ -261,8 +259,6 @@ class GANomaly(object):
     def conv2d_transpose(self, input, stride, padding, output_shape, \
         filter_size=[3, 3, 16, 32], dilations=[1, 1, 1, 1], activation="relu", name=""):
 
-        # strides=[N, H, W, C], [1, stride, stride, 1]
-        # filter_size=[ksize, ksize, num_outputs, num_inputs]
         self.weights, self.w_names, weight = self.variable_maker(var_bank=self.weights, name_bank=self.w_names, \
             shape=filter_size, name='%s_w' %(name))
         self.biasis, self.b_names, bias = self.variable_maker(var_bank=self.biasis, name_bank=self.b_names, \
