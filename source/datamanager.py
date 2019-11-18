@@ -1,4 +1,3 @@
-import torch
 import numpy as np
 import tensorflow as tf
 
@@ -104,10 +103,7 @@ class Dataset(object):
             min_x, max_x = x_tr.min(), x_tr.max()
             x_tr = (x_tr - min_x) / (max_x - min_x)
 
-        x_tr_torch = torch.from_numpy(np.transpose(x_tr, (0, 3, 1, 2)))
-        y_tr_torch = torch.from_numpy(y_tr)
-
-        return x_tr, x_tr_torch, y_tr, y_tr_torch, terminator
+        return x_tr, y_tr, terminator
 
     def next_test(self, batch_size=1):
 
@@ -125,7 +121,4 @@ class Dataset(object):
             min_x, max_x = x_te.min(), x_te.max()
             x_te = (x_te - min_x) / (max_x - min_x)
 
-        x_te_torch = torch.from_numpy(np.transpose(x_te, (0, 3, 1, 2)))
-        y_te_torch = torch.from_numpy(y_te)
-
-        return x_te, x_te_torch, y_te, y_te_torch, terminator
+        return x_te, y_te, terminator

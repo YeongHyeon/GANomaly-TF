@@ -1,35 +1,36 @@
-import os, argparse
-os.environ["CUDA_VISIBLE_DEVICES"]="0"
+import os, warnings, argparse
+os.environ['TF_CPP_MIN_LOG_LEVEL']='2'
+os.environ["CUDA_VISIBLE_DEVICES"]='0'
+warnings.filterwarnings('ignore')
 
-import torch
+import tensorflow as tf
 
-import source.neuralnet as nn
 import source.datamanager as dman
-import source.solver as solver
+import source.neuralnet as nn
+import source.tf_process as tfp
 
 def main():
 
     dataset = dman.Dataset(normalize=FLAGS.datnorm)
+    neuralnet = nn.GANomaly(height=dataset.height, width=dataset.width, channel=dataset.channel, \
+        z_dim=FLAGS.z_dim, leaning_rate=FLAGS.lr)
 
-    if(not(torch.cuda.is_available())): FLAGS.ngpu = 0
-    device = torch.device("cuda" if (torch.cuda.is_available() and FLAGS.ngpu > 0) else "cpu")
+    sess_config = tf.compat.v1.ConfigProto()
+    sess_config.gpu_options.allow_growth = True
+    sess = tf.compat.v1.Session(config=sess_config)
+    sess.run(tf.compat.v1.global_variables_initializer())
+    saver = tf.compat.v1.train.Saver()
 
-    neuralnet = nn.NeuralNet(height=dataset.height, width=dataset.width, channel=dataset.channel, \
-        device=device, ngpu=FLAGS.ngpu, \
-        ksize=FLAGS.ksize, z_dim=FLAGS.z_dim, learning_rate=FLAGS.lr)
-
-    solver.training(neuralnet=neuralnet, dataset=dataset, epochs=FLAGS.epoch, batch_size=FLAGS.batch)
-    solver.test(neuralnet=neuralnet, dataset=dataset)
+    tfp.training(sess=sess, neuralnet=neuralnet, saver=saver, dataset=dataset, epochs=FLAGS.epoch, batch_size=FLAGS.batch, normalize=True)
+    tfp.test(sess=sess, neuralnet=neuralnet, saver=saver, dataset=dataset, batch_size=FLAGS.batch)
 
 if __name__ == '__main__':
 
     parser = argparse.ArgumentParser()
-    parser.add_argument('--ngpu', type=int, default=1, help='-')
     parser.add_argument('--datnorm', type=bool, default=True, help='Data normalization')
-    parser.add_argument('--ksize', type=int, default=3, help='kernel size for constructing Neural Network')
     parser.add_argument('--z_dim', type=int, default=128, help='Dimension of latent vector')
-    parser.add_argument('--lr', type=float, default=1e-4, help='Learning rate for training')
-    parser.add_argument('--epoch', type=int, default=100, help='Training epoch')
+    parser.add_argument('--lr', type=int, default=1e-4, help='Learning rate for training')
+    parser.add_argument('--epoch', type=int, default=1000, help='Training epoch')
     parser.add_argument('--batch', type=int, default=32, help='Mini batch size')
 
     FLAGS, unparsed = parser.parse_known_args()
