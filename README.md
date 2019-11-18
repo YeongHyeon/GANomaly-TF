@@ -1,7 +1,7 @@
 GANomaly
 =====
 
-Implementation of GANomaly with MNIST dataset [<a href="https://github.com/YeongHyeon/CVAE-AnomalyDetection">Related repository</a>].
+Implementation of GANomaly with MNIST dataset [<a href="https://github.com/YeongHyeon/CVAE-AnomalyDetection">Related repository</a>] [<a href="https://github.com/YeongHyeon/GANomaly-PyTorch">PyTorch Version</a>].
 
 ## Architecture
 <div align="center">
