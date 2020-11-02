@@ -22,14 +22,57 @@ Implementation of GANomaly with MNIST dataset [<a href="https://github.com/Yeong
 </div>
 
 ## Results
+
+### Training Procedure
+<div align="center">
+  <p>
+    <img src="./figures/GANomaly_loss_enc.svg" width="220">
+    <img src="./figures/GANomaly_loss_con.svg" width="220">
+    <img src="./figures/GANomaly_loss_adv.svg" width="220">
+    <img src="./figures/GANomaly_loss_target.svg" width="220">
+  </p>
+  <p>Loss graph in the training procedure. </br> Each graph shows encoding loss, reconstruction loss, adversarial loss, and total (target) loss respectively.</p>
+</div>
+
 <div align="center">
   <img src="./figures/restoring.png" width="800">  
   <p>Restoration result by GANomaly.</p>
 </div>
 
+### Test Procedure
 <div align="center">
   <img src="./figures/test-box.png" width="400">
   <p>Box plot with encoding loss of test procedure.</p>
+</div>
+
+<div align="center">
+  <p>
+    <img src="./figures/in_in01.png" width="130">
+    <img src="./figures/in_in02.png" width="130">
+    <img src="./figures/in_in03.png" width="130">
+  </p>
+  <p>Normal samples classified as normal.</p>
+
+  <p>
+    <img src="./figures/in_out01.png" width="130">
+    <img src="./figures/in_out02.png" width="130">
+    <img src="./figures/in_out03.png" width="130">
+  </p>
+  <p>Abnormal samples classified as normal.</p>
+
+  <p>
+    <img src="./figures/out_in01.png" width="130">
+    <img src="./figures/out_in02.png" width="130">
+    <img src="./figures/out_in03.png" width="130">
+  </p>
+  <p>Normal samples classified as abnormal.</p>
+
+  <p>
+    <img src="./figures/out_out01.png" width="130">
+    <img src="./figures/out_out02.png" width="130">
+    <img src="./figures/out_out03.png" width="130">
+  </p>
+  <p>Abnormal samples classified as abnormal.</p>
 </div>
 
 ## Environment
