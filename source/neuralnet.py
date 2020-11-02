@@ -27,7 +27,7 @@ class GANomaly(object):
         self.__build_model(x_real=self.x, ksize=self.ksize, verbose=verbose)
         self.__build_loss()
 
-        with tf.control_dependencies(tf.get_collection(tf.compat.v1.GraphKeys.UPDATE_OPS)):
+        with tf.control_dependencies(tf.compat.v1.get_collection(tf.compat.v1.GraphKeys.UPDATE_OPS)):
             self.optimizer = tf.compat.v1.train.AdamOptimizer( \
                 self.learning_rate).minimize(self.losses['target'])
 
