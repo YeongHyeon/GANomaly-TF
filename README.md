@@ -1,23 +1,26 @@
-GANomaly
+[TensorFlow] GANomaly
 =====
 
-Implementation of GANomaly with MNIST dataset [<a href="https://github.com/YeongHyeon/CVAE-AnomalyDetection">Related repository</a>] [<a href="https://github.com/YeongHyeon/GANomaly-PyTorch">PyTorch Version</a>].
+TensorFlow implementation of GANomaly with MNIST dataset.
+<a href="https://github.com/YeongHyeon/GANomaly-PyTorch">PyTorch Version</a> is also implemented.
 
-## Architecture
+## Summary
+
+### GANomaly architecture
 <div align="center">
-  <img src="./figures/ganomaly.png" width="500">  
+  <img src="./figures/ganomaly.png" width="650">  
   <p>Simplified GANomaly architecture.</p>
 </div>
 
-## Graph in TensorBoard
+### Graph in TensorBoard
 <div align="center">
-  <img src="./figures/graph.png" width="800">  
+  <img src="./figures/graph.png" width="650">  
   <p>Graph of GANomaly.</p>
 </div>
 
-## Problem Definition
+### Problem Definition
 <div align="center">
-  <img src="./figures/definition.png" width="600">  
+  <img src="./figures/definition.png" width="450">  
   <p>'Class-1' is defined as normal and the others are defined as abnormal.</p>
 </div>
 
