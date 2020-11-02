@@ -164,7 +164,7 @@ class GANomaly(object):
 
     def __build_model(self, x_real, ksize=3, verbose=True):
 
-        print("\n* Encoder")
+        if(verbose): print("\n* Encoder")
         self.variables['z_real'], _ = \
             self.__encoder(x=x_real, ksize=ksize, reuse=False, \
             name='enc', verbose=verbose)
@@ -235,30 +235,30 @@ class GANomaly(object):
 
             convt1_1 = self.layer.conv2d(x=z, stride=1, padding='SAME', \
                 filter_size=[ksize, ksize, 64, 64], batch_norm=True, training=self.training, \
-                activation=activation, name="dec_conv1_1", verbose=verbose)
+                activation=activation, name="%s_conv1_1" %(name), verbose=verbose)
             convt1_2 = self.layer.conv2d(x=convt1_1, stride=1, padding='SAME', \
                 filter_size=[ksize, ksize, 64, 64], batch_norm=True, training=self.training, \
-                activation=activation, name="dec_conv1_2", verbose=verbose)
+                activation=activation, name="%s_conv1_2" %(name), verbose=verbose)
 
             [n, h, w, c] = self.conv_shapes[-2]
             convt2_1 = self.layer.convt2d(x=convt1_2, stride=2, padding='SAME', \
                 output_shape=[self.batch_size, h, w, c], filter_size=[ksize, ksize, 32, 64], \
                 dilations=[1, 1, 1, 1], batch_norm=True, training=self.training, \
-                activation=activation, name="dec_conv2_1", verbose=verbose)
+                activation=activation, name="%s_conv2_1" %(name), verbose=verbose)
             convt2_2 = self.layer.conv2d(x=convt2_1, stride=1, padding='SAME', \
                 filter_size=[ksize, ksize, 32, 32], batch_norm=True, training=self.training, \
-                activation=activation, name="dec_conv2_2", verbose=verbose)
+                activation=activation, name="%s_conv2_2" %(name), verbose=verbose)
 
             [n, h, w, c] = self.conv_shapes[-3]
             convt3_1 = self.layer.convt2d(x=convt2_2, stride=2, padding='SAME', \
                 output_shape=[self.batch_size, h, w, c], filter_size=[ksize, ksize, 16, 32], \
                 dilations=[1, 1, 1, 1], batch_norm=True, training=self.training, \
-                activation=activation, name="dec_conv3_1", verbose=verbose)
+                activation=activation, name="%s_conv3_1" %(name), verbose=verbose)
             convt3_2 = self.layer.conv2d(x=convt3_1, stride=1, padding='SAME', \
                 filter_size=[ksize, ksize, 16, 16], batch_norm=True, training=self.training, \
-                activation=activation, name="dec_conv3_2", verbose=verbose)
+                activation=activation, name="%s_conv3_2" %(name), verbose=verbose)
             d = self.layer.conv2d(x=convt3_2, stride=1, padding='SAME', \
                 filter_size=[ksize, ksize, 16, self.channel], batch_norm=True, training=self.training, \
-                activation="sigmoid", name="dec_conv3_3", verbose=verbose)
+                activation="sigmoid", name="%s_conv3_3" %(name), verbose=verbose)
 
             return d
