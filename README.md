@@ -26,10 +26,11 @@ Implementation of GANomaly with MNIST dataset [<a href="https://github.com/Yeong
 ### Training Procedure
 <div align="center">
   <p>
-    <img src="./figures/GANomaly_loss_enc.svg" width="220">
-    <img src="./figures/GANomaly_loss_con.svg" width="220">
-    <img src="./figures/GANomaly_loss_adv.svg" width="220">
-    <img src="./figures/GANomaly_loss_target.svg" width="220">
+    <img src="./figures/GANomaly_loss_enc.svg" width="300">
+    <img src="./figures/GANomaly_loss_con.svg" width="300">
+    </br>
+    <img src="./figures/GANomaly_loss_adv.svg" width="300">
+    <img src="./figures/GANomaly_loss_target.svg" width="300">
   </p>
   <p>Loss graph in the training procedure. </br> Each graph shows encoding loss, reconstruction loss, adversarial loss, and total (target) loss respectively.</p>
 </div>
