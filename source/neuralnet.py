@@ -1,295 +1,264 @@
+import os
+import numpy as np
 import tensorflow as tf
+import source.layers as lay
 
 class GANomaly(object):
 
-    def __init__(self, height, width, channel, z_dim, w_enc=1, w_con=50, w_adv=1, leaning_rate=1e-3):
+    def __init__(self, \
+        height, width, channel, ksize, \
+        w_enc=1, w_con=50, w_adv=1, \
+        learning_rate=1e-3, path='', verbose=True):
 
         print("\nInitializing Neural Network...")
-        self.height, self.width, self.channel = height, width, channel
-        self.k_size, self.z_dim = 3, z_dim
+        self.height, self.width, self.channel, self.ksize = height, width, channel, ksize
         self.w_enc, self.w_con, self.w_adv = w_enc, w_con, w_adv
-        self.leaning_rate = leaning_rate
+        self.learning_rate = learning_rate
+        self.path_ckpt = path
 
         self.x = tf.compat.v1.placeholder(tf.float32, [None, self.height, self.width, self.channel])
-        self.batch_size = tf.placeholder(tf.int32, shape=[])
+        self.batch_size = tf.compat.v1.placeholder(tf.int32, shape=[])
+        self.training = tf.compat.v1.placeholder(tf.bool, shape=[])
 
-        self.weights, self.biasis = [], []
-        self.w_names, self.b_names = [], []
-        self.fc_shapes, self.conv_shapes = [], []
-        self.features_real, self.features_fake = [], []
+        self.layer = lay.Layers()
 
-        self.z_code, self.x_hat, self.z_code_hat, self.dis_x, self.dis_x_hat, self.features_real, self.features_fake =\
-            self.build_model(input=self.x, ksize=self.k_size)
+        self.conv_shapes = []
+        self.variables, self.losses = {}, {}
+        self.__build_model(x_real=self.x, ksize=self.ksize, verbose=verbose)
+        self.__build_loss()
 
-        # Loss 1: Encoding loss (L2 distance)
-        self.loss_enc = tf.compat.v1.reduce_sum(tf.square(self.z_code - self.z_code_hat), axis=(1))
-        # Loss 2: Restoration loss (L1 distance)
-        self.loss_con = tf.compat.v1.reduce_sum(tf.abs(self.x - self.x_hat), axis=(1, 2, 3))
-        # Loss 3: Adversarial loss (L2 distance)
-        self.loss_adv = tf.compat.v1.reduce_sum(tf.square(self.dis_x - self.dis_x_hat), axis=(1))
-        for fidx, _ in enumerate(self.features_real):
-            feat_dim = len(self.features_real[fidx].shape)
-            if(feat_dim == 4):
-                self.loss_adv += tf.compat.v1.reduce_sum(tf.square(self.features_real[fidx] - self.features_fake[fidx]), axis=(1, 2, 3))
-            elif(feat_dim == 3):
-                self.loss_adv += tf.compat.v1.reduce_sum(tf.square(self.features_real[fidx] - self.features_fake[fidx]), axis=(1, 2))
-            elif(feat_dim == 2):
-                self.loss_adv += tf.compat.v1.reduce_sum(tf.square(self.features_real[fidx] - self.features_fake[fidx]), axis=(1))
-            else:
-                self.loss_adv += tf.compat.v1.reduce_sum(tf.square(self.features_real[fidx] - self.features_fake[fidx]))
+        with tf.control_dependencies(tf.get_collection(tf.GraphKeys.UPDATE_OPS)):
+            self.optimizer = tf.compat.v1.train.AdamOptimizer( \
+                self.learning_rate).minimize(self.losses['target'])
 
-        self.mean_loss_enc = tf.compat.v1.reduce_mean(self.loss_enc)
-        self.mean_loss_con = tf.compat.v1.reduce_mean(self.loss_con)
-        self.mean_loss_adv = tf.compat.v1.reduce_mean(self.loss_adv)
-
-        self.loss = tf.compat.v1.reduce_mean((self.w_enc * self.loss_enc) + (self.w_con * self.loss_con) + (self.w_adv * self.loss_adv))
-
-        #default: beta1=0.9, beta2=0.999
-        self.optimizer = tf.compat.v1.train.AdamOptimizer( \
-            self.leaning_rate, beta1=0.5, beta2=0.999).minimize(self.loss)
-
-        tf.compat.v1.summary.scalar('loss_enc', self.mean_loss_enc)
-        tf.compat.v1.summary.scalar('loss_con', self.mean_loss_con)
-        tf.compat.v1.summary.scalar('loss_adv', self.mean_loss_adv)
-        tf.compat.v1.summary.scalar('loss_tot', self.loss)
+        tf.compat.v1.summary.scalar('GANomaly/loss_enc', self.losses['mean_enc'])
+        tf.compat.v1.summary.scalar('GANomaly/loss_con', self.losses['mean_con'])
+        tf.compat.v1.summary.scalar('GANomaly/loss_adv', self.losses['mean_adv'])
+        tf.compat.v1.summary.scalar('GANomaly/loss_target', self.losses['target'])
         self.summaries = tf.compat.v1.summary.merge_all()
 
-    def build_model(self, input, ksize=3):
+        self.__init_session(path=self.path_ckpt)
 
-        with tf.name_scope('generator') as scope_gen:
-            z_code = self.encoder(input=input, ksize=ksize)
-            x_hat = self.decoder(input=z_code, ksize=ksize)
-            z_code_hat = self.encoder(input=x_hat, ksize=ksize)
+    def step(self, x, iteration=0, training=False):
 
-        with tf.name_scope('discriminator') as scope_dis:
-            dis_x, features_real = self.discriminator(input=input, ksize=ksize)
-            dis_x_hat, features_fake = self.discriminator(input=x_hat, ksize=ksize)
+        feed_tr = {self.x:x, self.batch_size:x.shape[0], self.training:True}
+        feed_te = {self.x:x, self.batch_size:x.shape[0], self.training:False}
 
-        return z_code, x_hat, z_code_hat, dis_x, dis_x_hat, features_real, features_fake
+        summaries = None
+        if(training):
+            try:
+                _, summaries = self.sess.run([self.optimizer, self.summaries], \
+                    feed_dict=feed_tr, options=self.run_options, run_metadata=self.run_metadata)
+            except:
+                _, summaries = self.sess.run([self.optimizer, self.summaries], \
+                    feed_dict=feed_tr)
+            self.summary_writer.add_summary(summaries, iteration)
 
-    def encoder(self, input, ksize=3):
+        x_fake, loss_enc, loss_con, loss_adv, loss_tot = \
+            self.sess.run([self.variables['x_fake'], self.losses['mean_enc'], self.losses['mean_con'], self.losses['mean_adv'], self.losses['target']], \
+            feed_dict=feed_te)
 
-        print("\nEncode-1")
-        conv1_1 = self.conv2d(input=input, stride=1, padding='SAME', \
-            filter_size=[ksize, ksize, 1, 16], activation="lrelu", name="enconv1_1")
-        conv1_2 = self.conv2d(input=conv1_1, stride=1, padding='SAME', \
-            filter_size=[ksize, ksize, 16, 16], activation="lrelu", name="enconv1_2")
-        maxp1 = self.maxpool(input=conv1_2, ksize=2, strides=2, padding='SAME', name="max_pool1")
-        self.conv_shapes.append(conv1_2.shape)
+        outputs = {'x_fake':x_fake, \
+            'loss_enc':loss_enc, 'loss_con':loss_con, 'loss_adv':loss_adv, 'loss_tot':loss_tot, \
+            'summaries':summaries}
+        return outputs
 
-        print("Encode-2")
-        conv2_1 = self.conv2d(input=maxp1, stride=1, padding='SAME', \
-            filter_size=[ksize, ksize, 16, 32], activation="lrelu", name="enconv2_1")
-        conv2_2 = self.conv2d(input=conv2_1, stride=1, padding='SAME', \
-            filter_size=[ksize, ksize, 32, 32], activation="lrelu", name="enconv2_2")
-        maxp2 = self.maxpool(input=conv2_2, ksize=2, strides=2, padding='SAME', name="max_pool2")
-        self.conv_shapes.append(conv2_2.shape)
+    def save_parameter(self, model='model_checker', epoch=-1):
 
-        print("Encode-3")
-        conv3_1 = self.conv2d(input=maxp2, stride=1, padding='SAME', \
-            filter_size=[ksize, ksize, 32, 64], activation="lrelu", name="enconv3_1")
-        conv3_2 = self.conv2d(input=conv3_1, stride=1, padding='SAME', \
-            filter_size=[ksize, ksize, 64, 64], activation="lrelu", name="enconv3_2")
-        self.conv_shapes.append(conv3_2.shape)
+        self.saver.save(self.sess, os.path.join(self.path_ckpt, model))
+        if(epoch >= 0): self.summary_writer.add_run_metadata(self.run_metadata, 'epoch-%d' % epoch)
 
-        print("Dense (Fully-Connected)")
-        self.fc_shapes.append(conv3_2.shape)
-        [n, h, w, c] = self.fc_shapes[0]
-        fulcon_in = tf.compat.v1.reshape(conv3_2, shape=[self.batch_size, h*w*c], name="enfulcon_in")
-        fulcon1 = self.fully_connected(input=fulcon_in, num_inputs=int(h*w*c), \
-            num_outputs=512, activation="lrelu", name="enfullcon1")
+    def load_parameter(self, model='model_checker'):
 
-        z_code = self.fully_connected(input=fulcon1, num_inputs=int(fulcon1.shape[1]), \
-            num_outputs=self.z_dim, activation="None", name="encode")
+        path_load = os.path.join(self.path_ckpt, '%s.index' %(model))
+        if(os.path.exists(path_load)):
+            print("\nRestoring parameters")
+            self.saver.restore(self.sess, path_load.replace('.index', ''))
 
-        return z_code
+    def confirm_params(self, verbose=True):
 
-    def decoder(self, input, ksize=3):
+        print("\n* Parameter arrange")
 
-        print("\nDecode-Dense")
-        [n, h, w, c] = self.fc_shapes[0]
-        fulcon2 = self.fully_connected(input=input, num_inputs=int(self.z_dim), \
-            num_outputs=512, activation="lrelu", name="defullcon2")
-        fulcon3 = self.fully_connected(input=fulcon2, num_inputs=int(fulcon2.shape[1]), \
-            num_outputs=int(h*w*c), activation="lrelu", name="defullcon3")
-        fulcon_out = tf.compat.v1.reshape(fulcon3, shape=[self.batch_size, h, w, c], name="defulcon_out")
+        ftxt = open("list_parameters.txt", "w")
+        for var in tf.compat.v1.trainable_variables():
+            text = "Trainable: " + str(var.name) + str(var.shape)
+            if(verbose): print(text)
+            ftxt.write("%s\n" %(text))
+        ftxt.close()
 
-        print("Decode-1")
-        convt1_1 = self.conv2d(input=fulcon_out, stride=1, padding='SAME', \
-            filter_size=[ksize, ksize, 64, 64], activation="lrelu", name="deconv1_1")
-        convt1_2 = self.conv2d(input=convt1_1, stride=1, padding='SAME', \
-            filter_size=[ksize, ksize, 64, 64], activation="lrelu", name="deconv1_2")
+    def confirm_bn(self, verbose=True):
 
-        print("Decode-2")
-        [n, h, w, c] = self.conv_shapes[-2]
-        convt2_1 = self.conv2d_transpose(input=convt1_2, stride=2, padding='SAME', \
-            output_shape=[self.batch_size, h, w, c], filter_size=[ksize, ksize, 32, 64], \
-            dilations=[1, 1, 1, 1], activation="lrelu", name="deconv2_1")
-        convt2_2 = self.conv2d(input=convt2_1, stride=1, padding='SAME', \
-            filter_size=[ksize, ksize, 32, 32], activation="lrelu", name="deconv2_2")
+        print("\n* Confirm Batch Normalization")
 
-        print("Decode-3")
-        [n, h, w, c] = self.conv_shapes[-3]
-        convt3_1 = self.conv2d_transpose(input=convt2_2, stride=2, padding='SAME', \
-            output_shape=[self.batch_size, h, w, c], filter_size=[ksize, ksize, 16, 32], \
-            dilations=[1, 1, 1, 1], activation="lrelu", name="deconv3_1")
-        convt3_2 = self.conv2d(input=convt3_1, stride=1, padding='SAME', \
-            filter_size=[ksize, ksize, 16, 16], activation="lrelu", name="deconv3_2")
-        convt3_3 = self.conv2d(input=convt3_2, stride=1, padding='SAME', \
-            filter_size=[ksize, ksize, 16, 1], activation="None", name="deconv3_3")
-        convt3_3 = tf.compat.v1.clip_by_value(convt3_3, 1e-12, 1-(1e-12))
+        t_vars = tf.compat.v1.trainable_variables()
+        for var in t_vars:
+            if('bn' in var.name):
+                tmp_x = np.zeros((1, self.height, self.width, self.channel))
+                values = self.sess.run(var, \
+                    feed_dict={self.x:tmp_x, self.batch_size:1, self.training:False})
+                if(verbose): print(var.name, var.shape)
+                if(verbose): print(values)
 
-        return convt3_3
+    def loss_l1(self, a, b, reduce=None):
 
-    def discriminator(self, input, ksize=3):
+        distance = tf.compat.v1.reduce_sum(\
+            tf.math.abs(a - b), axis=reduce)
 
-        featurebank = []
+        return distance
 
-        print("\nDiscriminate-1")
-        conv1_1 = self.conv2d(input=input, stride=1, padding='SAME', \
-            filter_size=[ksize, ksize, 1, 16], activation="elu", name="disconv1_1")
-        featurebank.append(conv1_1)
-        conv1_2 = self.conv2d(input=conv1_1, stride=1, padding='SAME', \
-            filter_size=[ksize, ksize, 16, 16], activation="elu", name="disconv1_2")
-        featurebank.append(conv1_2)
-        maxp1 = self.maxpool(input=conv1_2, ksize=2, strides=2, padding='SAME', name="max_pool1")
+    def loss_l2(self, a, b, reduce=None):
 
-        print("Discriminate-2")
-        conv2_1 = self.conv2d(input=maxp1, stride=1, padding='SAME', \
-            filter_size=[ksize, ksize, 16, 32], activation="elu", name="disconv2_1")
-        featurebank.append(conv2_1)
-        conv2_2 = self.conv2d(input=conv2_1, stride=1, padding='SAME', \
-            filter_size=[ksize, ksize, 32, 32], activation="elu", name="disconv2_2")
-        featurebank.append(conv2_2)
-        maxp2 = self.maxpool(input=conv2_2, ksize=2, strides=2, padding='SAME', name="max_pool2")
+        distance = tf.compat.v1.reduce_sum(\
+            tf.math.sqrt(\
+            tf.math.square(a - b) + 1e-9), axis=reduce)
 
-        print("Discriminate-3")
-        conv3_1 = self.conv2d(input=maxp2, stride=1, padding='SAME', \
-            filter_size=[ksize, ksize, 32, 64], activation="elu", name="disconv3_1")
-        featurebank.append(conv3_1)
-        conv3_2 = self.conv2d(input=conv3_1, stride=1, padding='SAME', \
-            filter_size=[ksize, ksize, 64, 64], activation="elu", name="disconv3_2")
-        featurebank.append(conv3_2)
+        return distance
 
-        print("Dense (Fully-Connected)")
-        [n, h, w, c] = conv3_2.shape
-        fulcon_in = tf.compat.v1.reshape(conv3_2, shape=[self.batch_size, h*w*c], name="disfulcon_in")
-        fulcon1 = self.fully_connected(input=fulcon_in, num_inputs=int(h*w*c), \
-            num_outputs=512, activation="elu", name="disfullcon1")
-        featurebank.append(fulcon1)
-        disc_score = self.fully_connected(input=fulcon1, num_inputs=int(fulcon1.shape[1]), \
-            num_outputs=1, activation="sigmoid", name="disc_sco")
-        featurebank.append(disc_score)
-
-        return disc_score, featurebank
-
-    def initializer(self):
-        return tf.compat.v1.initializers.variance_scaling(distribution="untruncated_normal", dtype=tf.dtypes.float32)
-
-    def maxpool(self, input, ksize, strides, padding, name=""):
-
-        out_maxp = tf.compat.v1.nn.max_pool(value=input, \
-            ksize=ksize, strides=strides, padding=padding, name=name)
-        print("Max-Pool", input.shape, "->", out_maxp.shape)
-
-        return out_maxp
-
-    def activation_fn(self, input, activation="relu", name=""):
-
-        if("sigmoid" == activation):
-            out = tf.compat.v1.nn.sigmoid(input, name='%s_sigmoid' %(name))
-        elif("tanh" == activation):
-            out = tf.compat.v1.nn.tanh(input, name='%s_tanh' %(name))
-        elif("relu" == activation):
-            out = tf.compat.v1.nn.relu(input, name='%s_relu' %(name))
-        elif("lrelu" == activation):
-            out = tf.compat.v1.nn.leaky_relu(input, name='%s_lrelu' %(name))
-        elif("elu" == activation):
-            out = tf.compat.v1.nn.elu(input, name='%s_elu' %(name))
-        else: out = input
-
-        return out
-
-    def batch_normalization(self, input):
-
-        mean = tf.compat.v1.reduce_mean(input)
-        std = tf.compat.v1.math.reduce_std(input)
-
-        return (input - mean) / (std + 1e-12)
-
-    def variable_maker(self, var_bank, name_bank, shape, name=""):
+    def __init_session(self, path):
 
         try:
-            var_idx = name_bank.index(name)
-        except:
-            variable = tf.compat.v1.get_variable(name=name, \
-                shape=shape, initializer=self.initializer())
+            sess_config = tf.compat.v1.ConfigProto()
+            sess_config.gpu_options.allow_growth = True
+            self.sess = tf.compat.v1.Session(config=sess_config)
 
-            var_bank.append(variable)
-            name_bank.append(name)
-        else:
-            variable = var_bank[var_idx]
+            self.sess.run(tf.compat.v1.global_variables_initializer())
+            self.saver = tf.compat.v1.train.Saver()
 
-        return var_bank, name_bank, variable
+            self.summary_writer = tf.compat.v1.summary.FileWriter(path, self.sess.graph)
+            self.run_options = tf.compat.v1.RunOptions(trace_level=tf.compat.v1.RunOptions.FULL_TRACE)
+            self.run_metadata = tf.compat.v1.RunMetadata()
+        except: pass
 
-    def conv2d(self, input, stride, padding, \
-        filter_size=[3, 3, 16, 32], dilations=[1, 1, 1, 1], activation="relu", name=""):
+    def __build_loss(self):
 
-        self.weights, self.w_names, weight = self.variable_maker(var_bank=self.weights, name_bank=self.w_names, \
-            shape=filter_size, name='%s_w' %(name))
-        self.biasis, self.b_names, bias = self.variable_maker(var_bank=self.biasis, name_bank=self.b_names, \
-            shape=[filter_size[-1]], name='%s_b' %(name))
+        # Loss 1: Encoding loss (L2 distance)
+        loss_enc = self.loss_l2(self.variables['z_real'], self.variables['z_fake'], [1, 2, 3])
+        # Loss 2: Restoration loss (L1 distance)
+        loss_con = self.loss_l1(self.x, self.variables['x_fake'], [1, 2, 3])
+        # Loss 3: Adversarial loss (L2 distance)
+        loss_adv = self.loss_l2(self.variables['d_real'], self.variables['d_fake'], [1, 2, 3])
 
-        out_conv = tf.compat.v1.nn.conv2d(
-            input=input,
-            filter=weight,
-            strides=[1, stride, stride, 1],
-            padding=padding,
-            use_cudnn_on_gpu=True,
-            data_format='NHWC',
-            dilations=dilations,
-            name='%s_conv' %(name),
-        )
-        out_bias = tf.math.add(out_conv, bias, name='%s_add' %(name))
-        out_bias = self.batch_normalization(input=out_bias)
+        for fidx, _ in enumerate(self.variables['f_real']):
+            feat_dim = len(self.variables['f_real'][fidx].shape)
+            if(feat_dim == 4):
+                loss_adv += self.loss_l2(self.variables['d_real'], self.variables['d_fake'], [1, 2, 3])
+            elif(feat_dim == 3):
+                loss_adv += self.loss_l2(self.variables['d_real'], self.variables['d_fake'], [1, 2])
+            elif(feat_dim == 2):
+                loss_adv += self.loss_l2(self.variables['d_real'], self.variables['d_fake'], [1])
+            else:
+                loss_adv += self.loss_l2(self.variables['d_real'], self.variables['d_fake'])
 
-        print("Conv", input.shape, "->", out_bias.shape)
-        return self.activation_fn(input=out_bias, activation=activation, name=name)
+        self.losses['mean_enc'] = tf.compat.v1.reduce_mean(loss_enc)
+        self.losses['mean_con'] = tf.compat.v1.reduce_mean(loss_con)
+        self.losses['mean_adv'] = tf.compat.v1.reduce_mean(loss_adv)
 
-    def conv2d_transpose(self, input, stride, padding, output_shape, \
-        filter_size=[3, 3, 16, 32], dilations=[1, 1, 1, 1], activation="relu", name=""):
+        self.losses['loss_enc'] = loss_enc
+        self.losses['loss_con'] = loss_con
+        self.losses['loss_adv'] = loss_adv
 
-        self.weights, self.w_names, weight = self.variable_maker(var_bank=self.weights, name_bank=self.w_names, \
-            shape=filter_size, name='%s_w' %(name))
-        self.biasis, self.b_names, bias = self.variable_maker(var_bank=self.biasis, name_bank=self.b_names, \
-            shape=[filter_size[-2]], name='%s_b' %(name))
+        self.losses['target'] = tf.compat.v1.reduce_mean(\
+            self.losses['loss_enc'] * self.w_enc\
+            + self.losses['loss_con'] * self.w_con\
+            + self.losses['loss_adv'] * self.w_adv)
 
-        out_conv = tf.compat.v1.nn.conv2d_transpose(
-            value=input,
-            filter=weight,
-            output_shape=output_shape,
-            strides=[1, stride, stride, 1],
-            padding=padding,
-            data_format='NHWC',
-            dilations=dilations,
-            name='%s_conv_tr' %(name),
-        )
-        out_bias = tf.math.add(out_conv, bias, name='%s_add' %(name))
-        out_bias = self.batch_normalization(input=out_bias)
+    def __build_model(self, x_real, ksize=3, verbose=True):
 
-        print("Conv-Tr", input.shape, "->", out_bias.shape)
-        return self.activation_fn(input=out_bias, activation=activation, name=name)
+        print("\n* Encoder")
+        self.variables['z_real'], _ = \
+            self.__encoder(x=x_real, ksize=ksize, reuse=False, \
+            name='enc', verbose=verbose)
+        if(verbose): print("\n* Decoder")
+        self.variables['x_fake'] = \
+            self.__decoder(z=self.variables['z_real'], ksize=ksize, reuse=False, \
+            name='dec', verbose=verbose)
+        self.variables['z_fake'], _ = \
+            self.__encoder(x=self.variables['x_fake'], ksize=ksize, reuse=True, \
+            name='enc', verbose=False)
 
-    def fully_connected(self, input, num_inputs, num_outputs, activation="relu", name=""):
+        if(verbose): print("\n* Discriminator")
+        self.variables['d_real'], self.variables['f_real'] = \
+            self.__encoder(x=x_real, ksize=ksize, reuse=False, \
+            name='dis', verbose=verbose)
+        self.variables['d_fake'], self.variables['f_fake'] = \
+            self.__encoder(x=self.variables['x_fake'], ksize=ksize, reuse=True, \
+            name='dis', verbose=False)
 
-        self.weights, self.w_names, weight = self.variable_maker(var_bank=self.weights, name_bank=self.w_names, \
-            shape=[num_inputs, num_outputs], name='%s_w' %(name))
-        self.biasis, self.b_names, bias = self.variable_maker(var_bank=self.biasis, name_bank=self.b_names, \
-            shape=[num_outputs], name='%s_b' %(name))
+    def __encoder(self, x, ksize=3, reuse=False, name='enc', activation='lrelu', verbose=True):
 
-        out_mul = tf.compat.v1.matmul(input, weight, name='%s_mul' %(name))
-        out_bias = tf.math.add(out_mul, bias, name='%s_add' %(name))
-        out_bias = self.batch_normalization(input=out_bias)
+        with tf.variable_scope(name, reuse=reuse):
+            featurebank = []
 
-        print("Full-Con", input.shape, "->", out_bias.shape)
-        return self.activation_fn(input=out_bias, activation=activation, name=name)
+            conv1_1 = self.layer.conv2d(x=x, stride=1, padding='SAME', \
+                filter_size=[ksize, ksize, 1, 16], batch_norm=True, training=self.training, \
+                activation=activation, name="%s_conv1_1" %(name), verbose=verbose)
+            if('dis' in name): featurebank.append(conv1_1)
+            conv1_2 = self.layer.conv2d(x=conv1_1, stride=1, padding='SAME', \
+                filter_size=[ksize, ksize, 16, 16], batch_norm=True, training=self.training, \
+                activation=activation, name="%s_conv1_2" %(name), verbose=verbose)
+            if('enc' in name and not(reuse)): self.conv_shapes.append(conv1_2.shape)
+            if('dis' in name): featurebank.append(conv1_2)
+            maxp1 = self.layer.maxpool(x=conv1_2, ksize=2, strides=2, padding='SAME', \
+                name="%s_pool1" %(name), verbose=verbose)
+
+            conv2_1 = self.layer.conv2d(x=maxp1, stride=1, padding='SAME', \
+                filter_size=[ksize, ksize, 16, 32], batch_norm=True, training=self.training, \
+                activation=activation, name="%s_conv2_1" %(name), verbose=verbose)
+            if('dis' in name): featurebank.append(conv2_1)
+            conv2_2 = self.layer.conv2d(x=conv2_1, stride=1, padding='SAME', \
+                filter_size=[ksize, ksize, 32, 32], batch_norm=True, training=self.training, \
+                activation=activation, name="%s_conv2_2" %(name), verbose=verbose)
+            if('enc' in name and not(reuse)): self.conv_shapes.append(conv2_2.shape)
+            if('dis' in name): featurebank.append(conv2_2)
+            maxp2 = self.layer.maxpool(x=conv2_2, ksize=2, strides=2, padding='SAME', \
+                name="%s_pool2" %(name), verbose=verbose)
+
+            conv3_1 = self.layer.conv2d(x=maxp2, stride=1, padding='SAME', \
+                filter_size=[ksize, ksize, 32, 64], batch_norm=True, training=self.training, \
+                activation=activation, name="%s_conv3_1" %(name), verbose=verbose)
+            if('dis' in name): featurebank.append(conv3_1)
+            conv3_2 = self.layer.conv2d(x=conv3_1, stride=1, padding='SAME', \
+                filter_size=[ksize, ksize, 64, 64], batch_norm=True, training=self.training, \
+                activation=activation, name="%s_conv3_2" %(name), verbose=verbose)
+            if('enc' in name):
+                e = conv3_2
+            else:
+                e = self.layer.activation(x=conv3_2, activation='sigmoid', name="%s_fin" %(name))
+            if('enc' in name and not(reuse)): self.conv_shapes.append(e.shape)
+            if('dis' in name): featurebank.append(e)
+
+            return e, featurebank
+
+    def __decoder(self, z, ksize=3, reuse=False, name='dec', activation='lrelu', verbose=True):
+
+        with tf.variable_scope(name, reuse=reuse):
+
+            convt1_1 = self.layer.conv2d(x=z, stride=1, padding='SAME', \
+                filter_size=[ksize, ksize, 64, 64], batch_norm=True, training=self.training, \
+                activation=activation, name="dec_conv1_1", verbose=verbose)
+            convt1_2 = self.layer.conv2d(x=convt1_1, stride=1, padding='SAME', \
+                filter_size=[ksize, ksize, 64, 64], batch_norm=True, training=self.training, \
+                activation=activation, name="dec_conv1_2", verbose=verbose)
+
+            [n, h, w, c] = self.conv_shapes[-2]
+            convt2_1 = self.layer.convt2d(x=convt1_2, stride=2, padding='SAME', \
+                output_shape=[self.batch_size, h, w, c], filter_size=[ksize, ksize, 32, 64], \
+                dilations=[1, 1, 1, 1], batch_norm=True, training=self.training, \
+                activation=activation, name="dec_conv2_1", verbose=verbose)
+            convt2_2 = self.layer.conv2d(x=convt2_1, stride=1, padding='SAME', \
+                filter_size=[ksize, ksize, 32, 32], batch_norm=True, training=self.training, \
+                activation=activation, name="dec_conv2_2", verbose=verbose)
+
+            [n, h, w, c] = self.conv_shapes[-3]
+            convt3_1 = self.layer.convt2d(x=convt2_2, stride=2, padding='SAME', \
+                output_shape=[self.batch_size, h, w, c], filter_size=[ksize, ksize, 16, 32], \
+                dilations=[1, 1, 1, 1], batch_norm=True, training=self.training, \
+                activation=activation, name="dec_conv3_1", verbose=verbose)
+            convt3_2 = self.layer.conv2d(x=convt3_1, stride=1, padding='SAME', \
+                filter_size=[ksize, ksize, 16, 16], batch_norm=True, training=self.training, \
+                activation=activation, name="dec_conv3_2", verbose=verbose)
+            d = self.layer.conv2d(x=convt3_2, stride=1, padding='SAME', \
+                filter_size=[ksize, ksize, 16, self.channel], batch_norm=True, training=self.training, \
+                activation="sigmoid", name="dec_conv3_3", verbose=verbose)
+
+            return d

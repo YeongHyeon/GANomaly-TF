@@ -1,10 +1,7 @@
-import os, inspect, time, math
+import os, math
 
-import tensorflow as tf
 import numpy as np
 import matplotlib.pyplot as plt
-
-PACK_PATH = os.path.dirname(os.path.abspath(inspect.getfile(inspect.currentframe())))+"/.."
 
 def make_dir(path):
 
@@ -30,7 +27,8 @@ def dat2canvas(data):
         for x in range(numd):
             try: tmp = data[x+(y*numd)]
             except: pass
-            else: canvas[(y*dh):(y*dh)+28, (x*dw):(x*dw)+28, :] = tmp
+            else:
+                canvas[(y*dh):(y*dh)+28, (x*dw):(x*dw)+28, :] = tmp
     if(dc == 1):
         canvas = gray2rgb(gray=canvas)
 
@@ -66,59 +64,42 @@ def boxplot(contents, savename=""):
     plt.savefig(savename)
     plt.close()
 
-def training(sess, saver, neuralnet, dataset, epochs, batch_size, normalize=True):
+def training(neuralnet, dataset, epochs, batch_size, normalize=True):
 
     print("\nTraining to %d epochs (%d of minibatch size)" %(epochs, batch_size))
 
-    summary_writer = tf.compat.v1.summary.FileWriter(PACK_PATH+'/Checkpoint', sess.graph)
+    make_dir(path="training")
+    result_list = ["restoration"]
+    for result_name in result_list: make_dir(path=os.path.join("training", result_name))
 
-    make_dir(path="results")
-    result_list = ["tr_resotring"]
-    for result_name in result_list: make_dir(path=os.path.join("results", result_name))
-
-    start_time = time.time()
     iteration = 0
-
-    run_options = tf.compat.v1.RunOptions(trace_level=tf.compat.v1.RunOptions.FULL_TRACE)
-    run_metadata = tf.compat.v1.RunMetadata()
-
     test_sq = 20
     test_size = test_sq**2
     for epoch in range(epochs):
 
         x_tr, y_tr, _ = dataset.next_train(batch_size=test_size, fix=True) # Initial batch
-        x_restore = sess.run(neuralnet.x_hat, \
-            feed_dict={neuralnet.x:x_tr, neuralnet.batch_size:x_tr.shape[0]})
-
-        save_img(contents=[x_tr, x_restore, (x_tr-x_restore)**2], \
+        step_dict = neuralnet.step(x=x_tr, training=False)
+        x_fake = step_dict['x_fake']
+        save_img(contents=[x_tr, x_fake, (x_tr-x_fake)**2], \
             names=["Input\n(x)", "Restoration\n(x to x-hat)", "Difference"], \
-            savename=os.path.join("results", "tr_resotring", "%08d.png" %(epoch)))
+            savename=os.path.join("training", "restoration", "%08d.png" %(epoch)))
 
         while(True):
-            x_tr, y_tr, terminator = dataset.next_train(batch_size) # y_tr does not used in this prj.
-
-            _, summaries = sess.run([neuralnet.optimizer, neuralnet.summaries], \
-                feed_dict={neuralnet.x:x_tr, neuralnet.batch_size:x_tr.shape[0]}, \
-                options=run_options, run_metadata=run_metadata)
-            loss_enc, loss_con, loss_adv, loss_tot = sess.run([neuralnet.mean_loss_enc, neuralnet.mean_loss_con, neuralnet.mean_loss_adv, neuralnet.loss], \
-                feed_dict={neuralnet.x:x_tr, neuralnet.batch_size:x_tr.shape[0]})
-            summary_writer.add_summary(summaries, iteration)
+            x_tr, y_tr, terminator = dataset.next_train(batch_size)
+            step_dict = neuralnet.step(x=x_tr, iteration=iteration, training=True)
 
             iteration += 1
             if(terminator): break
 
-        print("Epoch [%d / %d] (%d iteration) Loss  Enc:%.3f, Con:%.3f, Adv:%.3f, Tot:%.3f" \
-            %(epoch, epochs, iteration, loss_enc, loss_con, loss_adv, loss_tot))
-        saver.save(sess, PACK_PATH+"/Checkpoint/model_checker")
-        summary_writer.add_run_metadata(run_metadata, 'epoch-%d' % epoch)
+        print("Epoch [%d / %d] (%d iteration) \n Tot:%.3f | Enc:%.3f, Con:%.3f, Adv:%.3f, " \
+            %(epoch, epochs, iteration, \
+            step_dict['loss_tot'], step_dict['loss_enc'], step_dict['loss_con'], step_dict['loss_adv']))
+        neuralnet.save_parameter(model='model_checker', epoch=epoch)
 
-def test(sess, saver, neuralnet, dataset, batch_size):
-
-    if(os.path.exists(PACK_PATH+"/Checkpoint/model_checker.index")):
-        print("\nRestoring parameters")
-        saver.restore(sess, PACK_PATH+"/Checkpoint/model_checker")
+def test(neuralnet, dataset, batch_size):
 
     print("\nTest...")
+    neuralnet.load_parameter(model='model_checker')
 
     make_dir(path="test")
     result_list = ["inbound", "outbound"]
@@ -126,12 +107,12 @@ def test(sess, saver, neuralnet, dataset, batch_size):
 
     loss_list = []
     while(True):
-        x_te, y_te, terminator = dataset.next_test(1) # y_te does not used in this prj.
+        x_te, y_te, terminator = dataset.next_test(1)
 
-        x_restore, score_anomaly = sess.run([neuralnet.x_hat, neuralnet.loss_enc], \
-            feed_dict={neuralnet.x:x_te, neuralnet.batch_size:x_te.shape[0]})
+        step_dict = neuralnet.step(x=x_te, training=False)
+        x_fake, loss_enc = step_dict['x_fake'], step_dict['loss_enc']
         if(y_te[0] == 1):
-            loss_list.append(score_anomaly[0])
+            loss_list.append(loss_enc)
 
         if(terminator): break
 
@@ -147,25 +128,25 @@ def test(sess, saver, neuralnet, dataset, batch_size):
     z_enc_tot, y_te_tot = None, None
     loss4box = [[], [], [], [], [], [], [], [], [], []]
     while(True):
-        x_te, y_te, terminator = dataset.next_test(1) # y_te does not used in this prj.
+        x_te, y_te, terminator = dataset.next_test(1)
 
-        x_restore, score_anomaly = sess.run([neuralnet.x_hat, neuralnet.loss_enc], \
-            feed_dict={neuralnet.x:x_te, neuralnet.batch_size:x_te.shape[0]})
+        step_dict = neuralnet.step(x=x_te, training=False)
+        x_fake, loss_enc = step_dict['x_fake'], step_dict['loss_enc']
 
-        loss4box[y_te[0]].append(score_anomaly)
+        loss4box[y_te[0]].append(loss_enc)
 
-        outcheck = score_anomaly > outbound
-        fcsv.write("%d, %.5f, %r\n" %(y_te, score_anomaly, outcheck))
+        outcheck = loss_enc > outbound
+        fcsv.write("%d, %.5f, %r\n" %(y_te, loss_enc, outcheck))
 
-        [h, w, c] = x_restore[0].shape
+        [h, w, c] = x_fake[0].shape
         canvas = np.ones((h, w*3, c), np.float32)
         canvas[:, :w, :] = x_te[0]
-        canvas[:, w:w*2, :] = x_restore[0]
-        canvas[:, w*2:, :] = (x_te[0]-x_restore[0])**2
+        canvas[:, w:w*2, :] = x_fake[0]
+        canvas[:, w*2:, :] = (x_te[0]-x_fake[0])**2
         if(outcheck):
-            plt.imsave(os.path.join("test", "outbound", "%08d-%08d.png" %(testnum, int(score_anomaly))), gray2rgb(gray=canvas))
+            plt.imsave(os.path.join("test", "outbound", "%08d-%08d.png" %(testnum, int(loss_enc))), gray2rgb(gray=canvas))
         else:
-            plt.imsave(os.path.join("test", "inbound", "%08d-%08d.png" %(testnum, int(score_anomaly))), gray2rgb(gray=canvas))
+            plt.imsave(os.path.join("test", "inbound", "%08d-%08d.png" %(testnum, int(loss_enc))), gray2rgb(gray=canvas))
 
         testnum += 1
 
