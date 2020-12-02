@@ -1,4 +1,4 @@
-[TensorFlow] GANomaly
+[TensorFlow] GANomaly: Semi-Supervised Anomaly Detection via Adversarial Training
 =====
 
 TensorFlow implementation of GANomaly with MNIST dataset.  
